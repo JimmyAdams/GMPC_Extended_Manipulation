@@ -10,7 +10,7 @@ from PyQt5 import QtGui
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
-from PyQt5.QtWidgets import QWidget, QPushButton, QApplication, QGridLayout, QListWidget, QMessageBox
+from PyQt5.QtWidgets import QWidget, QMessageBox, QPushButton, QApplication, QGridLayout, QListWidget, QMessageBox
 from PyQt5.QtWidgets import QApplication,QVBoxLayout, QHBoxLayout, QGroupBox, QScrollArea, QVBoxLayout, QGroupBox, QLabel, QPushButton, QFormLayout
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtWidgets import QTableWidget,QTableWidgetItem
@@ -23,16 +23,62 @@ from mutagen.mp3 import MP3
 import numpy as np
 from PIL import Image
 from matplotlib import pyplot as plt
+import musicbrainzngs
 
-class MyButtons():
+class Playlist():
+    def __init__(self, name):
+        self.name = name #unique to each instance
+        self.list = [] #songs with path or list of songs
+
+    def addSongToPlaylist(self. songName):
+        self.list.append(songName)
+
+    def removeSongFromPlaylist(self, songName):
+        self.list.remove(songName)
+
+    def getAllSongs(self):
+        return self.list
+
+
+
+
+class Dialog(QDialog):
+    NumGridRows = 3
+    NumButtons = 4
+
     def __init__(self):
-        QObject.__init__(self)
+        super(Dialog, self).__init__()
+        self.createFormGroupBox()
+
+        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttonBox.accepted.connect(self.accept)
+        buttonBox.rejected.connect(self.reject)
+
+        mainLayout = QVBoxLayout()
+        mainLayout.addWidget(self.formGroupBox)
+        mainLayout.addWidget(buttonBox)
+        self.setLayout(mainLayout)
+
+        self.setWindowTitle("Playlist selector")
+        self.show()
+
+    def createFormGroupBox(self):
+        self.formGroupBox = QGroupBox("Form layout")
+        layout = QFormLayout()
+        layout.addRow(QLabel("Name:"), QLineEdit())
+        layout.addRow(QLabel("Country:"), QComboBox())
+        layout.addRow(QLabel("Age:"), QSpinBox())
+        self.formGroupBox.setLayout(layout)
+
+    def test(self):
+        print("Test")
 
 
 class MusicPlayer(QWidget):
     #TODO: function for loading files
     songsList = [] # class variable shared by all instances
     dataSongs = [] #ID3 for songs
+    playLists = [] # users created playlists
 
     def __init__(self):
         super().__init__()
@@ -48,21 +94,20 @@ class MusicPlayer(QWidget):
                 self.songsList.append(file)
                 realdir = os.path.realpath(file)
                 tempAudio = ID3(realdir)
-                #print(tempAudio['TIT2'].text[0])
-                #audio = ID3(realdir)
+                #TODO if exist
                 self.dataSongs.append(tempAudio['TIT2'].text[0])
+                self.autor = tempAudio['TPE1'].text[0]
                 #print(audio['TIT2'].text[0])
 
 
         #os.chdir("/home/jakub/Music/No Doubt-Tragic Kingdom")
     def listview_clicked(self):#set variable with picked song
         item = self.listWidget.currentItem()
-        print(item.text())
-        #self.play(item.text())
-        #self.status == "Stopped"
+        #print(item.text())
         self.pickedSong = item.text()
         self.status = "Stopped"
         self.fillBoxSongInfo()
+        self.initTable()
 
     def initUI(self):
         self.pickedSong = ""
@@ -98,6 +143,9 @@ class MusicPlayer(QWidget):
         btnNext.move(180, 20)
         btnNext.clicked.connect(self.next)
 
+        btnToPlaylist = QPushButton('Add to playlist',self)
+        btnToPlaylist.move(280, 20)
+        btnToPlaylist.clicked.connect(self.availablePlaylists)
         #self.infobox()
 
         self.initSongList()
@@ -135,7 +183,7 @@ class MusicPlayer(QWidget):
         self.infoLabels = []
         #infoLabels[1] = QLabel()
         for i in range(0,4):
-            self.infoLabels.append(QLabel("wee"))
+            self.infoLabels.append(QLabel(""))
             vbox.addWidget(self.infoLabels[i])
 
         #self.groupbox.setLayout(vbox)
@@ -164,7 +212,7 @@ class MusicPlayer(QWidget):
 
     def fillBoxSongInfo(self):
         name = self.pickedSong
-        print(("/home/jakub/Music/No Doubt-Tragic Kingdom/"+self.pickedSong))
+        #print(("/home/jakub/Music/No Doubt-Tragic Kingdom/"+self.pickedSong))
         song = ("/home/jakub/Music/The Cure - 1979 Boys Don't Cry/"+self.pickedSong)
         audio = ID3(song)
         mp3s = MP3(song)
@@ -189,6 +237,12 @@ class MusicPlayer(QWidget):
 
 
         return
+
+    def availablePlaylists(self):
+        dialog = Dialog()
+        dialog.test()
+        dialog.exec_()
+        pass
 
     def play(self):
         print("Status in play is " + self.status)
@@ -251,14 +305,71 @@ class MusicPlayer(QWidget):
 
 
     def initTable(self):
+        if self.pickedSong:#if ssong is choosen, find autohor and song title for searching in database
+            song = ("/home/jakub/Music/The Cure - 1979 Boys Don't Cry/"+self.pickedSong)
+            tempAudio = ID3(song)
+            songTitle = tempAudio['TIT2'].text[0]
+            autor = tempAudio['TPE1'].text[0]
+            print("Table")
+            print(autor)
+            print(songTitle)
+            print("Tableend")
+
+            #result = musicbrainzngs.search_releases(artist=autor, tracks=songTitle,limit=1)
+            #print(result['release-list'])
         # set row count
         self.tableWidget.setRowCount(12)
         # set column count
         self.tableWidget.setColumnCount(2)
+
         for idx,name in enumerate(self.dataSongs):
             self.tableWidget.setItem(idx,0, QTableWidgetItem(name))
 
+def printString(rel):
+    for key in rel:
+        #print(type(rel[key]))
+        if isinstance(rel[key], str):
+            print(key + " : " + rel[key])
+            #array1.append(key)
+            #array2.append(rel[key])
+        elif isinstance(rel[key], dict):
+            printString(rel[key])
+        #elif isinstance(rel[key], list):
+
+
+
+def show_release_details(rel):
+    """Print some details about a release dictionary to stdout.
+    """
+    # "artist-credit-phrase" is a flat string of the credited artists
+    # joined with " + " or whatever is given by the server.
+    # You can also work with the "artist-credit" list manually.
+    print("{}, by {}".format(rel['title'], rel["artist-credit-phrase"]))
+    if 'date' in rel:
+        print("Released {} ({})".format(rel['date'], rel['status']))
+    print("MusicBrainz ID: {}".format(rel['id']))
+    print("Country: {}".format(rel['country']))
+    print("Artist: {}".format(rel['artist-credit-phrase']))
+    print("*************************************")
+    printString(rel)
+    #for key in rel:
+    #    print(type(rel[key]))
+
+
+
 if __name__ == '__main__':
+    musicbrainzngs.set_useragent(
+    "python-musicbrainzngs-example",
+    "0.1",
+    "https://github.com/alastair/python-musicbrainzngs/",
+)
+    artist = "U2"
+    album = "One"
+
+    #result = musicbrainzngs.search_releases(artist=artist, tracks=album,limit=1)
+    #print(result['release-list'])
+
+
 
     app = QApplication(sys.argv)
     ex = MusicPlayer()
