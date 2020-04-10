@@ -24,35 +24,46 @@ import numpy as np
 from PIL import Image
 from matplotlib import pyplot as plt
 import musicbrainzngs
+import copy
+
+# all songs will be in one default playlist
 
 class Playlist():
-    def __init__(self, name):
-        self.name = name #unique to each instance
-        self.list = [] #songs with path or list of songs
+    def __init__(self):
+        self.name = "" #unique to each instance
+        self.songs = [] #songs with path or list of songs
 
-    def addSongToPlaylist(self. songName):
-        self.list.append(songName)
+    def setNameToPlaylist(self, name):
+        self.name = name
+
+    def addSongToPlaylist(self, songName):
+        self.songs.append(songName)
 
     def removeSongFromPlaylist(self, songName):
-        self.list.remove(songName)
+        self.songs.remove(songName)
 
     def getAllSongs(self):
-        return self.list
+        return self.songs #maybe next func to return for QComboBox
+
+    def printAllsongs(self):
+        for i in range(len(self.songs)):
+            print(self.songs[i])
+
+    def getNameOfPlaylist(self):
+        return self.name
 
 
 
+class Dialog(QDialog):#nemusi byt ako samotna trieda asi
+    nameOfPlaylist = ""
 
-class Dialog(QDialog):
-    NumGridRows = 3
-    NumButtons = 4
-
-    def __init__(self):
+    def __init__(self,allplaylists):
         super(Dialog, self).__init__()
-        self.createFormGroupBox()
+        self.createFormGroupBox(allplaylists)
 
-        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok)# | QDialogButtonBox.Cancel
         buttonBox.accepted.connect(self.accept)
-        buttonBox.rejected.connect(self.reject)
+        #buttonBox.rejected.connect(self.reject)
 
         mainLayout = QVBoxLayout()
         mainLayout.addWidget(self.formGroupBox)
@@ -60,25 +71,35 @@ class Dialog(QDialog):
         self.setLayout(mainLayout)
 
         self.setWindowTitle("Playlist selector")
-        self.show()
+        self.boxCombo.activated[str].connect(self.pLaylistOnClick)
+        #self.show()
 
-    def createFormGroupBox(self):
-        self.formGroupBox = QGroupBox("Form layout")
+    def createFormGroupBox(self, allplaylists):
+        self.boxCombo = QComboBox()
+        self.boxCombo.clear()
+        #array = allplaylists.returnListPlaylist()
+        #print(len(playlists))
+        for item in range(len(allplaylists)):
+            self.boxCombo.addItem(allplaylists[item].getNameOfPlaylist())
+            #print(playlists[item].getNameOfPlaylist())
+        self.formGroupBox = QGroupBox("Click playlist")
         layout = QFormLayout()
-        layout.addRow(QLabel("Name:"), QLineEdit())
-        layout.addRow(QLabel("Country:"), QComboBox())
-        layout.addRow(QLabel("Age:"), QSpinBox())
+        layout.addRow(QLabel("Playlist:"), self.boxCombo)
         self.formGroupBox.setLayout(layout)
 
-    def test(self):
-        print("Test")
+    def pLaylistOnClick(self, text):
+        self.nameOfPlaylist = text # return name of picked playlist
 
+    def returnPickedPlaylist(self):
+        return self.nameOfPlaylist
 
 class MusicPlayer(QWidget):
     #TODO: function for loading files
     songsList = [] # class variable shared by all instances
     dataSongs = [] #ID3 for songs
-    playLists = [] # users created playlists
+    allPlaylists = []
+    playLists = [] # users created class of playlists
+
 
     def __init__(self):
         super().__init__()
@@ -86,6 +107,8 @@ class MusicPlayer(QWidget):
         self.initUI()
 
     def initSongList(self):
+        #file = str(QFileDialog.getExistingDirectory(self, "Select Directory"))
+        #print(file)
         os.chdir("/home/jakub/Music/The Cure - 1979 Boys Don't Cry")
         filesList= os.listdir()
         for file in filesList:
@@ -112,10 +135,26 @@ class MusicPlayer(QWidget):
     def initUI(self):
         self.pickedSong = ""
         self.status = "Stopped" #activity in player ->played|paused|unpaused|stopped
-        #qbtn = QPushButton('Quit', self)
-        #qbtn.clicked.connect(QApplication.instance().quit)
-        #btn.resize(qbtn.sizeHint())
-        #qbtn.move(50, 50)
+        self.currentPlaylist = Playlist()
+
+        onePlaylist = Playlist()
+        onePlaylist.setNameToPlaylist("Prvy playlist")
+        onePlaylist.addSongToPlaylist("Pesnicka 1")
+        onePlaylist.addSongToPlaylist("Necho boze da")
+        onePlaylist.addSongToPlaylist("Siel siel")
+        twoPlaylist = Playlist()
+        twoPlaylist.setNameToPlaylist("Druhy Playlist")
+        twoPlaylist.addSongToPlaylist("Pesnicka AA")
+        twoPlaylist.addSongToPlaylist("Pesnicka AB")
+        twoPlaylist.addSongToPlaylist("Pesnicka CC")
+        threePlaylist = Playlist()
+        threePlaylist.setNameToPlaylist("Treti Playlist")
+        threePlaylist.addSongToPlaylist("Pesnicka 1233")
+        self.addToPlaylists(onePlaylist)
+        self.addToPlaylists(twoPlaylist)
+        self.addToPlaylists(threePlaylist)
+
+
 
         btnPlay = QPushButton(self)
         btnPlay.setIcon(QIcon(QPixmap("play.png")))
@@ -143,10 +182,34 @@ class MusicPlayer(QWidget):
         btnNext.move(180, 20)
         btnNext.clicked.connect(self.next)
 
-        btnToPlaylist = QPushButton('Add to playlist',self)
-        btnToPlaylist.move(280, 20)
-        btnToPlaylist.clicked.connect(self.availablePlaylists)
+        btnSelectPlaylist = QPushButton('Select Playlist',self)
+        btnSelectPlaylist.move(280, 20)
+        btnSelectPlaylist.clicked.connect(self.selectPlaylists)
         #self.infobox()
+
+
+
+        btnToPlaylist = QPushButton('Add to Playlist',self)
+        btnToPlaylist.move(390, 20)
+        btnToPlaylist.clicked.connect(self.addSongToPlaylistAction)
+
+        btnCreatePlaylist = QPushButton('Create Playlist',self)
+        btnCreatePlaylist.move(505, 20)
+        btnCreatePlaylist.clicked.connect(self.createPlaylistAction)
+
+        btnDeletePlaylist = QPushButton('Delete Playlist',self)
+        btnDeletePlaylist.move(620, 20)
+        btnDeletePlaylist.clicked.connect(self.deletePlaylistAction)
+
+        btnMergePlaylist = QPushButton('Merge playlist',self)
+        btnMergePlaylist.move(620, 50)
+
+        self.labelPlaylist = QLabel(self)
+        self.labelPlaylist.move(420, 210)
+        self.labelPlaylist.resize(200,20)
+        self.labelPlaylist.setStyleSheet("background-color: white; border: 1px inset grey;")
+        self.labelPlaylist.setText("")
+        #self.labelPlaylist
 
         self.initSongList()
         print("-------------------------")
@@ -155,10 +218,6 @@ class MusicPlayer(QWidget):
         iterSongList = cycle(self.songsList)
         layout = QGridLayout()
 
-        self.tableWidget = QTableWidget(self)
-        self.tableWidget.move(400,230)
-        self.tableWidget.resize(300,370)
-        self.initTable()
 
 
         self.listWidget = QListWidget(self)
@@ -172,6 +231,11 @@ class MusicPlayer(QWidget):
         self.listWidget.setWindowTitle('PyQT QListwidget Demo')
         #listWidget.itemClicked.connect(listWidget.Clicked)
         self.listWidget.clicked.connect(self.listview_clicked)
+
+        self.playlistWidget = QListWidget(self)
+        self.playlistWidget.resize(300,370)
+        self.playlistWidget.move(420, 230)
+        #self.playlistWidget
 
         #Song Info Box
         self.groupbox = QGroupBox("Song Info",self)
@@ -208,7 +272,48 @@ class MusicPlayer(QWidget):
         self.setFixedSize(800, 640)
         self.setWindowTitle('Gnome Music Player Clone')
 
+
+
         self.show()
+
+    def addSongToPlaylistAction(self):
+        if(self.pickedSong):
+            for x in range(len(self.allPlaylists)):
+                if(self.allPlaylists[x].getNameOfPlaylist() == self.currentPlaylist.getNameOfPlaylist()):#current playlist
+                    self.allPlaylists[x].addSongToPlaylist(self.pickedSong)
+                    self.refreshPlaylistWidget()
+
+    def addToPlaylists(self, playlist):
+        self.allPlaylists.append(playlist)
+
+    def createPlaylistAction(self):
+        text, ok = QInputDialog.getText(self, 'Playlist Creator', 'Enter playlist name:')
+        tempPlay = Playlist()
+        tempPlay.setNameToPlaylist(str(text))
+        #tempPlay.addSongToPlaylist("zzzz")
+
+        self.allPlaylists.append(tempPlay)
+
+        self.refreshPlaylistWidget() #refresh values in dropmenu
+
+        if ok:
+         print(str(text))
+
+    def deletePlaylistAction(self):
+        text, ok = QInputDialog.getText(self, 'Playlist For Deleting', 'Enter playlist to delete:')
+        nameOfDeletedPlaylist = str(text)
+        tempPlay = Playlist()
+
+        for x in range(len(self.allPlaylists)-1):
+            if(self.allPlaylists[x].getNameOfPlaylist() == nameOfDeletedPlaylist):#current playlist
+                #self.allPlaylists[x].addSongToPlaylist(self.pickedSong)
+                print(nameOfDeletedPlaylist)
+                #Sprint(x)
+                del self.allPlaylists[x]
+
+
+        self.refreshPlaylistWidget()
+
 
     def fillBoxSongInfo(self):
         name = self.pickedSong
@@ -238,11 +343,33 @@ class MusicPlayer(QWidget):
 
         return
 
-    def availablePlaylists(self):
-        dialog = Dialog()
-        dialog.test()
-        dialog.exec_()
-        pass
+    def refreshPlaylistWidget(self):
+        #make label
+        self.labelPlaylist.setText(self.currentPlaylist.getNameOfPlaylist())
+        # update songs in list widget
+        self.playlistWidget.clear()
+        for song in self.currentPlaylist.getAllSongs():#fill list with songs
+            self.playlistWidget.addItem(song)
+
+    def selectPlaylists(self):
+
+
+        #self.allPlaylists.printAllPlaylists()
+        self.dialog = Dialog(self.allPlaylists) # popup window to select playlist
+        self.dialog.exec_()
+
+        #print(self.dialog.returnPickedPlaylist())
+        nameOfPickedPlaylist = self.dialog.returnPickedPlaylist()
+        for idx in range(len(self.allPlaylists)):
+            if self.allPlaylists[idx].getNameOfPlaylist() == nameOfPickedPlaylist:
+                print(self.allPlaylists[idx].getNameOfPlaylist())
+                self.currentPlaylist = copy.copy(self.allPlaylists[idx])
+                self.currentPlaylist.printAllsongs()
+
+                self.refreshPlaylistWidget()
+
+        return
+
 
     def play(self):
         print("Status in play is " + self.status)
@@ -318,12 +445,12 @@ class MusicPlayer(QWidget):
             #result = musicbrainzngs.search_releases(artist=autor, tracks=songTitle,limit=1)
             #print(result['release-list'])
         # set row count
-        self.tableWidget.setRowCount(12)
+        #self.tableWidget.setRowCount(12)
         # set column count
-        self.tableWidget.setColumnCount(2)
+        #self.tableWidget.setColumnCount(2)
 
-        for idx,name in enumerate(self.dataSongs):
-            self.tableWidget.setItem(idx,0, QTableWidgetItem(name))
+        #for idx,name in enumerate(self.dataSongs):
+        #s    self.tableWidget.setItem(idx,0, QTableWidgetItem(name))
 
 def printString(rel):
     for key in rel:
@@ -335,26 +462,6 @@ def printString(rel):
         elif isinstance(rel[key], dict):
             printString(rel[key])
         #elif isinstance(rel[key], list):
-
-
-
-def show_release_details(rel):
-    """Print some details about a release dictionary to stdout.
-    """
-    # "artist-credit-phrase" is a flat string of the credited artists
-    # joined with " + " or whatever is given by the server.
-    # You can also work with the "artist-credit" list manually.
-    print("{}, by {}".format(rel['title'], rel["artist-credit-phrase"]))
-    if 'date' in rel:
-        print("Released {} ({})".format(rel['date'], rel['status']))
-    print("MusicBrainz ID: {}".format(rel['id']))
-    print("Country: {}".format(rel['country']))
-    print("Artist: {}".format(rel['artist-credit-phrase']))
-    print("*************************************")
-    printString(rel)
-    #for key in rel:
-    #    print(type(rel[key]))
-
 
 
 if __name__ == '__main__':
