@@ -7,6 +7,8 @@ Author: Jakub Adamec
 
 import sys, os
 from PyQt5 import QtGui
+from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtGui import QCloseEvent
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
@@ -16,22 +18,28 @@ from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtWidgets import QTableWidget,QTableWidgetItem
 from pygame import mixer
 from itertools import cycle
-from collections import deque
+from collections import deque #iterate reversely
 from mutagen.id3 import *
 import mutagen
-from mutagen.mp3 import MP3
+from mutagen.mp3 import MP3 #metadata manipulation
 import numpy as np
 from PIL import Image
 from matplotlib import pyplot as plt
-import musicbrainzngs
-import copy
+import musicbrainzngs #metadata from public database
+import copy #copy instance of object
+import gzip, pickle
+import atexit
+import threading
+import time
 
 # all songs will be in one default playlist
 
 class Playlist():
+    #allPlaylists = []
     def __init__(self):
         self.name = "" #unique to each instance
         self.songs = [] #songs with path or list of songs
+        #Playlist.allPlaylists.append(self)
 
     def setNameToPlaylist(self, name):
         self.name = name
@@ -39,8 +47,14 @@ class Playlist():
     def addSongToPlaylist(self, songName):
         self.songs.append(songName)
 
+    def setMergedList(self, list1, list2):
+        self.songs = list(set(list1 + list2))
+
     def removeSongFromPlaylist(self, songName):
         self.songs.remove(songName)
+
+    def clearAllPlaylist(self):
+        self.songs.clear()
 
     def getAllSongs(self):
         return self.songs #maybe next func to return for QComboBox
@@ -51,6 +65,7 @@ class Playlist():
 
     def getNameOfPlaylist(self):
         return self.name
+
 
 
 
@@ -104,6 +119,20 @@ class MusicPlayer(QWidget):
     def __init__(self):
         super().__init__()
         mixer.init()
+
+        #initialization of permanent object from file
+        try:
+            with open('playlistsA', 'rb') as self.f:
+                database = pickle.load(self.f)
+            self.f.close()
+        except (IOError, EOFError):
+            #database = []
+            print("eeee")
+
+        atexit.register(self.savePermanent)
+
+        #print(*database, sep= "; ")
+
         self.initUI()
 
     def initSongList(self):
@@ -155,7 +184,6 @@ class MusicPlayer(QWidget):
         self.addToPlaylists(threePlaylist)
 
 
-
         btnPlay = QPushButton(self)
         btnPlay.setIcon(QIcon(QPixmap("play.png")))
         btnPlay.move(20, 20)
@@ -203,6 +231,7 @@ class MusicPlayer(QWidget):
 
         btnMergePlaylist = QPushButton('Merge playlist',self)
         btnMergePlaylist.move(620, 50)
+        btnMergePlaylist.clicked.connect(self.mergePlaylistsAction)
 
         self.labelPlaylist = QLabel(self)
         self.labelPlaylist.move(420, 210)
@@ -212,7 +241,7 @@ class MusicPlayer(QWidget):
         #self.labelPlaylist
 
         self.initSongList()
-        print("-------------------------")
+        #print("-------------------------")
         self.songsList.sort()
         #iterSongList = iter(self.songsList)
         iterSongList = cycle(self.songsList)
@@ -286,6 +315,56 @@ class MusicPlayer(QWidget):
     def addToPlaylists(self, playlist):
         self.allPlaylists.append(playlist)
 
+    def savePermanent(self):
+        try:
+            pickle.dump(self.allPlaylists, self.f)
+            self.f.close()
+        except:
+            pass
+        print("Saving data")
+
+
+    def mergePlaylistsAction(self):
+        newName, ok = QInputDialog.getText(self, 'Merge of Playlist', 'Set new Name for merged playlist:')
+        if not ok:
+            return
+        if not newName:
+            return
+        tempArray1 = []#names of playlist to qdialog
+        for x in range(len(self.allPlaylists)):
+            tempArray1.append(self.allPlaylists[x].getNameOfPlaylist())
+        firstPlaylist, ok = QInputDialog.getItem(self, "First Playlist", "Select first playlist to merge",tempArray1 , 0, False)
+        if not ok:
+            return
+        tempArray2 = []#names of playlist to qdialog
+        for x in range(len(self.allPlaylists)):
+            if(self.allPlaylists[x].getNameOfPlaylist() != firstPlaylist):
+                tempArray2.append(self.allPlaylists[x].getNameOfPlaylist())
+        if not ok:
+            return
+        secondPlaylist, ok = QInputDialog.getItem(self, "Second Playlist", "Select second playlist to merge",tempArray2 , 0, False)
+
+        playlist1 = Playlist()
+        playlist1 = self.playlistFromName(firstPlaylist)
+        playlist2 = Playlist()
+        playlist2 = self.playlistFromName(secondPlaylist)
+
+        merged = Playlist()
+        merged.setNameToPlaylist(newName)
+        merged.setMergedList(playlist1.getAllSongs(), playlist2.getAllSongs())
+        self.allPlaylists.append(merged)
+
+        self.refreshPlaylistWidget() #refresh values
+
+
+    def playlistFromName(self, name):
+        for x in range(len(self.allPlaylists)):
+            if(self.allPlaylists[x].getNameOfPlaylist() == name):
+                tempPlaylist = Playlist()
+                tempPlaylist = copy.copy(self.allPlaylists[x])
+
+        return tempPlaylist
+
     def createPlaylistAction(self):
         text, ok = QInputDialog.getText(self, 'Playlist Creator', 'Enter playlist name:')
         tempPlay = Playlist()
@@ -294,26 +373,42 @@ class MusicPlayer(QWidget):
 
         self.allPlaylists.append(tempPlay)
 
-        self.refreshPlaylistWidget() #refresh values in dropmenu
+        self.refreshPlaylistWidget() #refresh values
 
-        if ok:
-         print(str(text))
+        #if ok:
+         #print(str(text))
 
     def deletePlaylistAction(self):
-        text, ok = QInputDialog.getText(self, 'Playlist For Deleting', 'Enter playlist to delete:')
-        nameOfDeletedPlaylist = str(text)
-        tempPlay = Playlist()
 
-        for x in range(len(self.allPlaylists)-1):
-            if(self.allPlaylists[x].getNameOfPlaylist() == nameOfDeletedPlaylist):#current playlist
-                #self.allPlaylists[x].addSongToPlaylist(self.pickedSong)
-                print(nameOfDeletedPlaylist)
-                #Sprint(x)
-                del self.allPlaylists[x]
+        tempArray = []#names of playlist to qdialog
+        for x in range(len(self.allPlaylists)):
+            tempArray.append(self.allPlaylists[x].getNameOfPlaylist())
 
+
+        item, ok = QInputDialog.getItem(self, "select input dialog", "list of playlists",tempArray , 0, False)
+
+        if not ok:
+            return
+
+        if not item:
+            return
+        nameOfDeletedPlaylist = str(item)
+
+        #print(len(self.allPlaylists))
+        for x in range(len(self.allPlaylists)):
+            if(self.allPlaylists[x].getNameOfPlaylist() == nameOfDeletedPlaylist):
+                self.allPlaylists.pop(x)#delete playlist
+                break#break, deletes last item and dynamically lowers index so crash appears
+
+        #check for current playlsit deleted
+        if(self.currentPlaylist.getNameOfPlaylist() == nameOfDeletedPlaylist):
+            if( len(self.allPlaylists) > 0 ):
+                self.currentPlaylist = self.allPlaylists[0]
+            else:#if there is no other playlist
+                self.currentPlaylist.setNameToPlaylist("")
+                self.currentPlaylist.clearAllPlaylist()
 
         self.refreshPlaylistWidget()
-
 
     def fillBoxSongInfo(self):
         name = self.pickedSong
@@ -362,7 +457,7 @@ class MusicPlayer(QWidget):
         nameOfPickedPlaylist = self.dialog.returnPickedPlaylist()
         for idx in range(len(self.allPlaylists)):
             if self.allPlaylists[idx].getNameOfPlaylist() == nameOfPickedPlaylist:
-                print(self.allPlaylists[idx].getNameOfPlaylist())
+                #print(self.allPlaylists[idx].getNameOfPlaylist())
                 self.currentPlaylist = copy.copy(self.allPlaylists[idx])
                 self.currentPlaylist.printAllsongs()
 
@@ -372,7 +467,7 @@ class MusicPlayer(QWidget):
 
 
     def play(self):
-        print("Status in play is " + self.status)
+        #print("Status in play is " + self.status)
         if self.status == "Paused": #continues playing
             self.status = "Played"
             mixer.music.unpause()
@@ -380,7 +475,7 @@ class MusicPlayer(QWidget):
         else: # play song from beginning
             #self.stop()
             self.status = "Played"
-            print("Mixer loads "+ self.pickedSong)
+            #print("Mixer loads "+ self.pickedSong)
             mixer.music.load("/home/jakub/Music/The Cure - 1979 Boys Don't Cry/"+self.pickedSong)#"10 - No Doubt - DON'T SPEAK.MP3"
             mixer.music.play()
             return
@@ -430,6 +525,25 @@ class MusicPlayer(QWidget):
         word = str(min) + "min:" + str(sec) + "sec"
         return word
 
+        '''
+    def closeEvent(self, event):
+
+        quit_msg = "Are you sure you want to exit the program?"
+        reply = QMessageBox.question(self, 'Message',
+                         quit_msg, QMessageBox.Yes, QMessageBox.No)
+
+        if reply == QMessageBox.Yes:
+            self.saveToFile()
+
+            event.accept()
+        else:
+            event.ignore()
+
+    def saveToFile(self):
+        with open('playlistsA', 'wb') as self.f:
+            pickle.dump(self.allPlaylists, self.f)
+        self.f.close()
+        '''
 
     def initTable(self):
         if self.pickedSong:#if ssong is choosen, find autohor and song title for searching in database
@@ -437,10 +551,10 @@ class MusicPlayer(QWidget):
             tempAudio = ID3(song)
             songTitle = tempAudio['TIT2'].text[0]
             autor = tempAudio['TPE1'].text[0]
-            print("Table")
-            print(autor)
-            print(songTitle)
-            print("Tableend")
+            #print("Table")
+            #print(autor)
+            #print(songTitle)
+            #print("Tableend")
 
             #result = musicbrainzngs.search_releases(artist=autor, tracks=songTitle,limit=1)
             #print(result['release-list'])
@@ -464,6 +578,7 @@ def printString(rel):
         #elif isinstance(rel[key], list):
 
 
+
 if __name__ == '__main__':
     musicbrainzngs.set_useragent(
     "python-musicbrainzngs-example",
@@ -475,7 +590,6 @@ if __name__ == '__main__':
 
     #result = musicbrainzngs.search_releases(artist=artist, tracks=album,limit=1)
     #print(result['release-list'])
-
 
 
     app = QApplication(sys.argv)
