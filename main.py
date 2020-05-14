@@ -21,6 +21,7 @@ from itertools import cycle
 from collections import deque #iterate reversely
 from mutagen.id3 import *
 import mutagen
+from mutagen.id3 import ID3, ID3NoHeaderError
 from mutagen.mp3 import MP3 #metadata manipulation
 import numpy as np
 from PIL import Image
@@ -31,6 +32,10 @@ import gzip, pickle
 import atexit
 import threading
 import time
+import audio_metadata
+
+import data
+import beatalg
 
 # all songs will be in one default playlist
 
@@ -49,6 +54,12 @@ class Playlist():
 
     def setMergedList(self, list1, list2):
         self.songs = list(set(list1 + list2))
+
+    def setIntersectedList(self, list1, list2):
+        self.songs = [value for value in list1 if value in list2]
+
+    def setSymDiffList(self, list1, list2):
+        self.songs = [value for value in list1 + list2 if value not in list1 or value not in list2]
 
     def removeSongFromPlaylist(self, songName):
         self.songs.remove(songName)
@@ -124,10 +135,11 @@ class MusicPlayer(QWidget):
         try:
             with open('playlistsA', 'rb') as self.f:
                 database = pickle.load(self.f)
-            self.f.close()
+                self.f.close()
         except (IOError, EOFError):
             #database = []
-            print("eeee")
+            #print("eeee")
+            pass
 
         atexit.register(self.savePermanent)
 
@@ -136,20 +148,17 @@ class MusicPlayer(QWidget):
         self.initUI()
 
     def initSongList(self):
-        #file = str(QFileDialog.getExistingDirectory(self, "Select Directory"))
-        #print(file)
+        #filesList = str(QFileDialog.getExistingDirectory(self, "Select Directory"))
+        #print(filesList)
+        #os.chdir(filesList)
         os.chdir("/home/jakub/Music/The Cure - 1979 Boys Don't Cry")
-        filesList= os.listdir()
-        for file in filesList:
-
-            if file.lower().endswith(".mp3"):#case insensitive
+        filesLists= os.listdir()
+        self.realpath = filesLists
+        for file in filesLists:
+            if (file.lower().endswith(".mp3")):#case insensitive
                 self.songsList.append(file)
-                realdir = os.path.realpath(file)
-                tempAudio = ID3(realdir)
-                #TODO if exist
-                self.dataSongs.append(tempAudio['TIT2'].text[0])
-                self.autor = tempAudio['TPE1'].text[0]
-                #print(audio['TIT2'].text[0])
+            elif(file.lower().endswith(".wav")):
+                self.songsList.append(file)
 
 
         #os.chdir("/home/jakub/Music/No Doubt-Tragic Kingdom")
@@ -159,10 +168,16 @@ class MusicPlayer(QWidget):
         self.pickedSong = item.text()
         self.status = "Stopped"
         self.fillBoxSongInfo()
-        self.initTable()
+        #self.initTable()
+
+    def playlistview_clicked(self):
+        itemPlaylist2 = self.playlistWidget.currentItem()
+        self.playlist2CurrentSong = itemPlaylist2.text()
+        print("ll ",self.playlist2CurrentSong)
 
     def initUI(self):
         self.pickedSong = ""
+        self.playlist2CurrentSong = ""
         self.status = "Stopped" #activity in player ->played|paused|unpaused|stopped
         self.currentPlaylist = Playlist()
 
@@ -185,28 +200,28 @@ class MusicPlayer(QWidget):
 
 
         btnPlay = QPushButton(self)
-        btnPlay.setIcon(QIcon(QPixmap("play.png")))
+        btnPlay.setIcon(QIcon(QPixmap("icons/iconPlay.svg")))
         btnPlay.move(20, 20)
         btnPlay.clicked.connect(self.play)
 
         btnPause = QPushButton(self)
-        btnPause.setIcon(QIcon(QPixmap("pause.png")))
+        btnPause.setIcon(QIcon(QPixmap("icons/iconPause.svg")))
         btnPause.move(60, 20)
         btnPause.clicked.connect(self.pause)
 
         btnStop = QPushButton(self)
-        btnStop.setIcon(QIcon(QPixmap("stop.png")))
+        btnStop.setIcon(QIcon(QPixmap("icons/iconStop.svg")))
         btnStop.move(100, 20)
         btnStop.clicked.connect(self.stop)
 
         btnPrev = QPushButton(self)
-        btnPrev.setIcon(QIcon(QPixmap("previous.png")))
+        btnPrev.setIcon(QIcon(QPixmap("icons/iconPrev.svg")))
         btnPrev.move(140, 20)
         btnPrev.clicked.connect(self.previous)
         #btnPrev
 
         btnNext = QPushButton(self)
-        btnNext.setIcon(QIcon(QPixmap("next.png")))
+        btnNext.setIcon(QIcon(QPixmap("icons/iconNext.svg")))
         btnNext.move(180, 20)
         btnNext.clicked.connect(self.next)
 
@@ -221,6 +236,10 @@ class MusicPlayer(QWidget):
         btnToPlaylist.move(390, 20)
         btnToPlaylist.clicked.connect(self.addSongToPlaylistAction)
 
+        btnEraseFromPlaylist = QPushButton('Erase from Playlist',self)
+        btnEraseFromPlaylist.move(620, 50)
+        btnEraseFromPlaylist.clicked.connect(self.eraseSongFromPlaylistAction)
+
         btnCreatePlaylist = QPushButton('Create Playlist',self)
         btnCreatePlaylist.move(505, 20)
         btnCreatePlaylist.clicked.connect(self.createPlaylistAction)
@@ -229,12 +248,33 @@ class MusicPlayer(QWidget):
         btnDeletePlaylist.move(620, 20)
         btnDeletePlaylist.clicked.connect(self.deletePlaylistAction)
 
-        btnMergePlaylist = QPushButton('Merge playlist',self)
-        btnMergePlaylist.move(620, 50)
+        btnMergePlaylist = QPushButton('Merge playlists',self)
+        btnMergePlaylist.move(620, 80)
         btnMergePlaylist.clicked.connect(self.mergePlaylistsAction)
 
+        btnInterPlaylist = QPushButton('Inter playlists',self)
+        btnInterPlaylist.move(620, 110)
+        btnInterPlaylist.clicked.connect(self.interPlaylistsAction)
+
+        btnSymDiffPlaylist = QPushButton('Diff playlists',self)
+        btnSymDiffPlaylist.move(620,140)
+        btnSymDiffPlaylist.clicked.connect(self.symetricDiffPlaylistsAction)
+
+        btnExportPlaylist = QPushButton('Export PL->ALBUM',self)
+        btnExportPlaylist.move(620,170)
+
+        btnBPM = QPushButton('Get BPM',self)
+        btnBPM.move(620,200)
+
+        self.labelBPM = QLabel(self)
+        self.labelBPM.move(620,240)
+        self.labelBPM.resize(100,20)
+        self.labelBPM.setStyleSheet("background-color: red; border: 1px inset grey;")
+        self.labelBPM.setText("BPM: ")
+
+        #show playlist name
         self.labelPlaylist = QLabel(self)
-        self.labelPlaylist.move(420, 210)
+        self.labelPlaylist.move(300, 230)
         self.labelPlaylist.resize(200,20)
         self.labelPlaylist.setStyleSheet("background-color: white; border: 1px inset grey;")
         self.labelPlaylist.setText("")
@@ -248,13 +288,13 @@ class MusicPlayer(QWidget):
         layout = QGridLayout()
 
 
-
+        #songs in main playlist
         self.listWidget = QListWidget(self)
         for song in self.songsList:#fill list with songs
             self.listWidget.addItem(song)
         #Resize width and height
-        self.listWidget.resize(300,370)
-        self.listWidget.move(50, 230)
+        self.listWidget.resize(270,370)
+        self.listWidget.move(20, 250)
 
 
         self.listWidget.setWindowTitle('PyQT QListwidget Demo')
@@ -262,8 +302,10 @@ class MusicPlayer(QWidget):
         self.listWidget.clicked.connect(self.listview_clicked)
 
         self.playlistWidget = QListWidget(self)
-        self.playlistWidget.resize(300,370)
-        self.playlistWidget.move(420, 230)
+        self.playlistWidget.resize(240,370)
+        self.playlistWidget.move(300, 250)
+
+        self.playlistWidget.clicked.connect(self.playlistview_clicked)
         #self.playlistWidget
 
         #Song Info Box
@@ -282,11 +324,13 @@ class MusicPlayer(QWidget):
         #self.groupbox.setLayout(vbox)
         #groupbox.setFont(QtGui.QFont("Sanserif", 15))
 
+        #ADD image
         label = QLabel(self)
         pixmap = QPixmap('cover.jpg')
-
+        pixmap = pixmap.scaled(110, 110, Qt.KeepAspectRatio)
         label.setPixmap(pixmap)
-        label.setFixedSize(150,110)
+        #label.setFixedSize(180,130)
+        #label.resize(150,110)
 
         v2box.addWidget(label)
         v2box.setAlignment(Qt.AlignTop)
@@ -296,6 +340,12 @@ class MusicPlayer(QWidget):
         self.groupbox.setLayout(hbox)
 
         #vbox.addWidget(label)
+
+        #init metadata databse table
+        self.tableWidgetMeta = QTableWidget(self)
+        self.tableWidgetMeta.move(550,270)
+        self.tableWidgetMeta.resize(240,350)
+
 
         #self.setGeometry(100, 100, 750, 400)
         self.setFixedSize(800, 640)
@@ -312,8 +362,33 @@ class MusicPlayer(QWidget):
                     self.allPlaylists[x].addSongToPlaylist(self.pickedSong)
                     self.refreshPlaylistWidget()
 
+    def eraseSongFromPlaylistAction(self):
+        print("oooooo")
+        if(self.playlist2CurrentSong):
+            print(self.playlist2CurrentSong)
+            for x in range(len(self.allPlaylists)):
+                if(self.allPlaylists[x].getNameOfPlaylist() == self.currentPlaylist.getNameOfPlaylist()):#current playlist
+                    self.allPlaylists[x].removeSongFromPlaylist(self.playlist2CurrentSong)
+                    self.refreshPlaylistWidget()
+
     def addToPlaylists(self, playlist):
         self.allPlaylists.append(playlist)
+
+    def initDatabaseTable(self, nameArtist, nameSong):
+        metadataList = data.getMetadata(nameArtist,nameSong)
+        rowL = len(metadataList)
+        if(rowL < 1):#do nothing, no data
+            return
+        #set length of rows in table
+        self.tableWidgetMeta.setRowCount(rowL)
+        self.tableWidgetMeta.setColumnCount(2)
+        #catch error for empty metadaList
+        i = 0
+        for key, value in metadataList.items():
+            self.tableWidgetMeta.setItem(i,0, QTableWidgetItem(key))
+            self.tableWidgetMeta.setItem(i,1, QTableWidgetItem(value))
+            i = i + 1
+
 
     def savePermanent(self):
         try:
@@ -353,6 +428,70 @@ class MusicPlayer(QWidget):
         merged.setNameToPlaylist(newName)
         merged.setMergedList(playlist1.getAllSongs(), playlist2.getAllSongs())
         self.allPlaylists.append(merged)
+
+        self.refreshPlaylistWidget() #refresh values
+
+    def interPlaylistsAction(self):
+        newName, ok = QInputDialog.getText(self, 'Intersection of Playlists', 'Set new Name for final playlist:')
+        if not ok:
+            return
+        if not newName:
+            return
+        tempArray1 = []#names of playlist to qdialog
+        for x in range(len(self.allPlaylists)):
+            tempArray1.append(self.allPlaylists[x].getNameOfPlaylist())
+        firstPlaylist, ok = QInputDialog.getItem(self, "First Playlist", "Select first playlist to intersect",tempArray1 , 0, False)
+        if not ok:
+            return
+        tempArray2 = []#names of playlist to qdialog without one
+        for x in range(len(self.allPlaylists)):
+            if(self.allPlaylists[x].getNameOfPlaylist() != firstPlaylist):
+                tempArray2.append(self.allPlaylists[x].getNameOfPlaylist())
+        if not ok:
+            return
+        secondPlaylist, ok = QInputDialog.getItem(self, "Second Playlist", "Select second playlist to merge",tempArray2 , 0, False)
+
+        playlist1 = Playlist()
+        playlist1 = self.playlistFromName(firstPlaylist)
+        playlist2 = Playlist()
+        playlist2 = self.playlistFromName(secondPlaylist)
+
+        intersected = Playlist()
+        intersected.setNameToPlaylist(newName)
+        intersected.setIntersectedList(playlist1.getAllSongs(), playlist2.getAllSongs())
+        self.allPlaylists.append(intersected)
+
+        self.refreshPlaylistWidget() #refresh values
+
+    def symetricDiffPlaylistsAction(self):
+        newName, ok = QInputDialog.getText(self, 'Intersection of Playlists', 'Set new Name for final playlist:')
+        if not ok:
+            return
+        if not newName:
+            return
+        tempArray1 = []#names of playlist to qdialog
+        for x in range(len(self.allPlaylists)):
+            tempArray1.append(self.allPlaylists[x].getNameOfPlaylist())
+        firstPlaylist, ok = QInputDialog.getItem(self, "First Playlist", "Select first playlist to intersect",tempArray1 , 0, False)
+        if not ok:
+            return
+        tempArray2 = []#names of playlist to qdialog without one
+        for x in range(len(self.allPlaylists)):
+            if(self.allPlaylists[x].getNameOfPlaylist() != firstPlaylist):
+                tempArray2.append(self.allPlaylists[x].getNameOfPlaylist())
+        if not ok:
+            return
+        secondPlaylist, ok = QInputDialog.getItem(self, "Second Playlist", "Select second playlist to merge",tempArray2 , 0, False)
+
+        playlist1 = Playlist()
+        playlist1 = self.playlistFromName(firstPlaylist)
+        playlist2 = Playlist()
+        playlist2 = self.playlistFromName(secondPlaylist)
+
+        symDiff = Playlist()
+        symDiff.setNameToPlaylist(newName)
+        symDiff.setSymDiffList(playlist1.getAllSongs(), playlist2.getAllSongs())
+        self.allPlaylists.append(symDiff)
 
         self.refreshPlaylistWidget() #refresh values
 
@@ -412,28 +551,74 @@ class MusicPlayer(QWidget):
 
     def fillBoxSongInfo(self):
         name = self.pickedSong
-        #print(("/home/jakub/Music/No Doubt-Tragic Kingdom/"+self.pickedSong))
+        #add path
         song = ("/home/jakub/Music/The Cure - 1979 Boys Don't Cry/"+self.pickedSong)
-        audio = ID3(song)
-        mp3s = MP3(song)
-        #print(audio.pprint())
-        #TODO: coditions for existence
-        self.infoLabels[0].setText("Name: " + audio["TIT2"].text[0])
-        self.infoLabels[1].setText("Artist: " + audio["TPE1"].text[0])
-        self.infoLabels[2].setText("Length: " + self.secondsLength(mp3s.info.length))
-        self.infoLabels[3].setText("Format: " + str(mp3s.info.channels) + " channels, " + str(mp3s.info.sample_rate/1000) + "Hz, " + str(int(mp3s.info.bitrate/1000)) + "kbps")
 
-        # check if has picture
-        has_pic = False
+        if (name.lower().endswith(".mp3")):
+            try:
+                audio = ID3(song)
+            except (ID3NoHeaderError):
+                audio = ID3()#or return
+                self.infoLabels[0].setText("Name: ")
+                self.infoLabels[1].setText("Artist: ")
+                self.infoLabels[2].setText("Length: ")
+                self.infoLabels[3].setText("Format: ")
+                return
 
-        for k, v in audio.items():
-            if "APIC" in k:
-                has_pic = True
-                break
+            mp3s = MP3(song)
+            try:
+                self.infoLabels[0].setText("Name: " + audio["TIT2"].text[0])
+            except:
+                self.infoLabels[0].setText("Name: ")
+            try:
+                self.infoLabels[1].setText("Artist: " + audio["TPE1"].text[0])
+            except:
+                self.infoLabels[0].setText("Artist: ")
+            try:
+                self.infoLabels[2].setText("Length: " + self.secondsLength(mp3s.info.length))
+            except:
+                self.infoLabels[0].setText("Length: ")
+            try:
+                self.infoLabels[3].setText("Format: " + str(mp3s.info.channels) + " channels, " + str(mp3s.info.sample_rate/1000) + "Hz, " + str(int(mp3s.info.bitrate/1000)) + "kbps")
+            except:
+                self.infoLabels[0].setText("Format: ")
 
-        if(has_pic):
-            pict = audio.get("APIC:").data
-            #print(pict)
+            print(audio.pprint())
+            self.initDatabaseTable(audio["TPE1"].text[0], audio["TIT2"].text[0],)
+
+
+        elif(name.lower().endswith(".wav")):
+
+            try:
+                metadata = audio_metadata.load(song)
+
+            except:
+                self.infoLabels[0].setText("Name: ")
+                self.infoLabels[1].setText("Artist: ")
+                self.infoLabels[2].setText("Length: ")
+                self.infoLabels[3].setText("Format: ")
+                return
+
+            print(metadata)
+
+            try:
+                self.infoLabels[0].setText("Name: " + metadata.tags['title'][0])
+            except:
+                self.infoLabels[0].setText("Name: ")
+            try:
+                self.infoLabels[1].setText("Artist: "+ metadata.tags['artist'][0])
+            except:
+                self.infoLabels[1].setText("Artist: ")
+            try:
+                self.infoLabels[2].setText("Length: " + self.secondsLength(metadata.streaminfo['duration']))
+            except:
+                self.infoLabels[2].setText("Length: ")
+            try:
+                self.infoLabels[3].setText("Format: " + str(metadata.streaminfo['channels']) + " channels, " + str(metadata.streaminfo['sample_rate']/1000) + "Hz, " + str(int(metadata.streaminfo['bitrate']/1000)) + "kbps")
+            except:
+                self.infoLabels[3].setText("Format: ")
+
+            #todo: everything to block try except
 
 
         return
@@ -545,38 +730,6 @@ class MusicPlayer(QWidget):
         self.f.close()
         '''
 
-    def initTable(self):
-        if self.pickedSong:#if ssong is choosen, find autohor and song title for searching in database
-            song = ("/home/jakub/Music/The Cure - 1979 Boys Don't Cry/"+self.pickedSong)
-            tempAudio = ID3(song)
-            songTitle = tempAudio['TIT2'].text[0]
-            autor = tempAudio['TPE1'].text[0]
-            #print("Table")
-            #print(autor)
-            #print(songTitle)
-            #print("Tableend")
-
-            #result = musicbrainzngs.search_releases(artist=autor, tracks=songTitle,limit=1)
-            #print(result['release-list'])
-        # set row count
-        #self.tableWidget.setRowCount(12)
-        # set column count
-        #self.tableWidget.setColumnCount(2)
-
-        #for idx,name in enumerate(self.dataSongs):
-        #s    self.tableWidget.setItem(idx,0, QTableWidgetItem(name))
-
-def printString(rel):
-    for key in rel:
-        #print(type(rel[key]))
-        if isinstance(rel[key], str):
-            print(key + " : " + rel[key])
-            #array1.append(key)
-            #array2.append(rel[key])
-        elif isinstance(rel[key], dict):
-            printString(rel[key])
-        #elif isinstance(rel[key], list):
-
 
 
 if __name__ == '__main__':
@@ -585,8 +738,6 @@ if __name__ == '__main__':
     "0.1",
     "https://github.com/alastair/python-musicbrainzngs/",
 )
-    artist = "U2"
-    album = "One"
 
     #result = musicbrainzngs.search_releases(artist=artist, tracks=album,limit=1)
     #print(result['release-list'])
