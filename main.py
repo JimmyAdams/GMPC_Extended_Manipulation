@@ -35,10 +35,14 @@ import time
 import audio_metadata
 from tinytag import TinyTag
 
+#my own modules
 import data
 import beatalg
 
-# all songs will be in one default playlist
+
+# will be added to lists and playlists
+
+
 
 """
     A class used to represent one Playlist
@@ -169,47 +173,6 @@ class Playlist():
         return self.name
 
 
-
-
-class Dialog(QDialog):#nemusi byt ako samotna trieda asi
-    nameOfPlaylist = ""
-
-    def __init__(self,allplaylists):
-        super(Dialog, self).__init__()
-        self.createFormGroupBox(allplaylists)
-
-        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok)# | QDialogButtonBox.Cancel
-        buttonBox.accepted.connect(self.accept)
-        #buttonBox.rejected.connect(self.reject)
-
-        mainLayout = QVBoxLayout()
-        mainLayout.addWidget(self.formGroupBox)
-        mainLayout.addWidget(buttonBox)
-        self.setLayout(mainLayout)
-
-        self.setWindowTitle("Playlist selector")
-        self.boxCombo.activated[str].connect(self.pLaylistOnClick)
-        #self.show()
-
-    def createFormGroupBox(self, allplaylists):
-        self.boxCombo = QComboBox()
-        self.boxCombo.clear()
-        #array = allplaylists.returnListPlaylist()
-        #print(len(playlists))
-        for item in range(len(allplaylists)):
-            self.boxCombo.addItem(allplaylists[item].getNameOfPlaylist())
-            #print(playlists[item].getNameOfPlaylist())
-        self.formGroupBox = QGroupBox("Click playlist")
-        layout = QFormLayout()
-        layout.addRow(QLabel("Playlist:"), self.boxCombo)
-        self.formGroupBox.setLayout(layout)
-
-    def pLaylistOnClick(self, text):
-        self.nameOfPlaylist = text # return name of picked playlist
-
-    def returnPickedPlaylist(self):
-        return self.nameOfPlaylist
-
 """
     A class for media player, that contains every aspect
     of functionality in project, uses
@@ -236,19 +199,7 @@ class MusicPlayer(QWidget):
         super().__init__()
         mixer.init()
 
-        #initialization of permanent object from file
-        try:
-            with open('playlistsA', 'rb') as self.f:
-                database = pickle.load(self.f)
-                self.f.close()
-        except (IOError, EOFError):
-            #database = []
-            #print("eeee")
-            pass
 
-        atexit.register(self.savePermanent)
-
-        #print(*database, sep= "; ")
 
         self.initUI()
 
@@ -299,24 +250,28 @@ class MusicPlayer(QWidget):
         self.playlist2CurrentSong = "" #picked song in second playlist
         self.status = "Stopped" #activity in player ->played|paused|unpaused|stopped
         self.currentPlaylist = Playlist() # init current playlist
-        '''
-        onePlaylist = Playlist()
-        onePlaylist.setNameToPlaylist("Prvy playlist")
-        onePlaylist.addSongToPlaylist("Pesnicka 1")
-        onePlaylist.addSongToPlaylist("Necho boze da")
-        onePlaylist.addSongToPlaylist("Siel siel")
-        twoPlaylist = Playlist()
-        twoPlaylist.setNameToPlaylist("Druhy Playlist")
-        twoPlaylist.addSongToPlaylist("Pesnicka AA")
-        twoPlaylist.addSongToPlaylist("Pesnicka AB")
-        twoPlaylist.addSongToPlaylist("Pesnicka CC")
-        threePlaylist = Playlist()
-        threePlaylist.setNameToPlaylist("Treti Playlist")
-        threePlaylist.addSongToPlaylist("Pesnicka 1233")
-        self.addToPlaylists(onePlaylist)
-        self.addToPlaylists(twoPlaylist)
-        self.addToPlaylists(threePlaylist)
-        '''
+
+        #initialization of permanent object from file
+        try:
+            with open('playlists', 'rb') as self.f:
+                database = pickle.load(self.f)
+                self.allPlaylists = copy.copy(database)
+                self.f.close()
+
+        except (IOError, EOFError):
+            database = []
+            print("eeee")
+            pass
+
+        atexit.register(self.loadPermanentData)
+
+        try:
+            self.file = open('playlists', 'wb')
+        except:
+            pass
+
+
+        #database[0].printAllsongs()
 
         #button to play music
         btnPlay = QPushButton(self)
@@ -351,7 +306,7 @@ class MusicPlayer(QWidget):
         # button for Select playlist to show in playlist box
         btnSelectPlaylist = QPushButton('Select Playlist',self)
         btnSelectPlaylist.move(280, 20)
-        btnSelectPlaylist.clicked.connect(self.selectPlaylists)
+        btnSelectPlaylist.clicked.connect(self.selectPlaylistAction)
 
         # button for Adding song to playlist
         btnToPlaylist = QPushButton('Add to Playlist',self)
@@ -606,9 +561,10 @@ class MusicPlayer(QWidget):
         for x in range(len(self.allPlaylists)):
             if(self.allPlaylists[x].getNameOfPlaylist() != firstPlaylist):
                 tempArray2.append(self.allPlaylists[x].getNameOfPlaylist())
+
+        secondPlaylist, ok = QInputDialog.getItem(self, "Second Playlist", "Select second playlist to merge",tempArray2 , 0, False)
         if not ok:
             return
-        secondPlaylist, ok = QInputDialog.getItem(self, "Second Playlist", "Select second playlist to merge",tempArray2 , 0, False)
 
         playlist1 = Playlist()
         playlist1 = self.playlistFromName(firstPlaylist)
@@ -796,7 +752,7 @@ class MusicPlayer(QWidget):
             except:
                 self.infoLabels[2].setText("Length: ")
             try:
-                self.infoLabels[3].setText("Format: " + str(mp3s.info.channels) + " channels, " + str(mp3s.info.sample_rate/1000) + "Hz, " + str(int(mp3s.info.bitrate/1000)) + "kbps")
+                self.infoLabels[3].setText("Format: " + str(mp3s.info.channels) + " channels, " + str(mp3s.info.sample_rate/1000) + "KHz, " + str(int(mp3s.info.bitrate/1000)) + "kbps")
             except:
                 self.infoLabels[3].setText("Format: ")
 
@@ -831,7 +787,7 @@ class MusicPlayer(QWidget):
             except:
                 self.infoLabels[2].setText("Length: ")
             try:
-                self.infoLabels[3].setText("Format: " + str(metadata.streaminfo['channels']) + " channels, " + str(metadata.streaminfo['sample_rate']/1000) + "Hz, " + str(int(metadata.streaminfo['bitrate']/1000)) + "kbps")
+                self.infoLabels[3].setText("Format: " + str(metadata.streaminfo['channels']) + " channels, " + str(metadata.streaminfo['sample_rate']/1000) + "KHz, " + str(int(metadata.streaminfo['bitrate']/1000)) + "kbps")
             except:
                 self.infoLabels[3].setText("Format: ")
 
@@ -851,17 +807,22 @@ class MusicPlayer(QWidget):
         for song in self.currentPlaylist.getAllSongs():#fill list with songs
             self.playlistWidget.addItem(song)
 
-    def selectPlaylists(self):
+
+    def selectPlaylistAction(self):
         '''
             Select playlist from dialog
         '''
+        tempArray1 = []#names of playlist to qdialog
+        for x in range(len(self.allPlaylists)):
+            tempArray1.append(self.allPlaylists[x].getNameOfPlaylist())
 
-        #self.allPlaylists.printAllPlaylists()
-        self.dialog = Dialog(self.allPlaylists) # popup window to select playlist
-        self.dialog.exec_()
+        if(len(self.allPlaylists) == 0):
+            QMessageBox.about(self, "Nothing found", "No playlists available")
+            return
+        nameOfPickedPlaylist, ok = QInputDialog.getItem(self, "Second Playlist", "Select second playlist to merge",tempArray1 , 0, False)
+        if not ok:
+            return
 
-        #print(self.dialog.returnPickedPlaylist())
-        nameOfPickedPlaylist = self.dialog.returnPickedPlaylist()
         for idx in range(len(self.allPlaylists)):
             if self.allPlaylists[idx].getNameOfPlaylist() == nameOfPickedPlaylist:
                 #print(self.allPlaylists[idx].getNameOfPlaylist())
@@ -869,8 +830,6 @@ class MusicPlayer(QWidget):
                 self.currentPlaylist.printAllsongs()
 
                 self.refreshPlaylistWidget()
-
-        return
 
 
     def play(self):
@@ -969,13 +928,20 @@ class MusicPlayer(QWidget):
             event.accept()
         else:
             event.ignore()
-
-    def saveToFile(self):
-        with open('playlistsA', 'wb') as self.f:
-            pickle.dump(self.allPlaylists, self.f)
-        self.f.close()
         '''
+    def saveToFile(self):
+        try:
+            print("save data")
+            with open('playlists', 'wb') as f:#overwrite file
+                pickle.dump(self.allPlaylists, f, pickle.HIGHEST_PROTOCOL)
+                print("opening")
 
+        except:
+            print("eeeeerrpr")
+            pass
+    def loadPermanentData(self): # opens file in main Init beacuse atexit part cant write to file
+        pickle.dump(self.allPlaylists, self.file, pickle.HIGHEST_PROTOCOL)
+        self.file.close()
 
 
 if __name__ == '__main__':
