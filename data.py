@@ -11,30 +11,45 @@ import json
 import objectpath
 
 def getMetadata(artist, release):
+    """ Data from public database Music brainz
+
+        Parameters
+        ----------
+        artist : str
+            Name of artists to search in database
+
+        release : str
+            Name of song=release from artist for searching
+
+        Returns
+        -------
+        dict : information for table, with data about song
+    """
+
+    # variable for result of appending data
     finalList = {}
 
-    #artistinfo = musicbrainzngs.search_recordings(artist="Rihanna", release="Umbrella")
-
-    #ss = json.dumps(artistinfo, indent=4, sort_keys=True)
-
+    #set name for search
+    musicbrainzngs.set_useragent(
+        "python-musicbrainzngs-example",
+        "0.1",
+        "https://github.com/alastair/python-musicbrainzngs/",
+    )
 
     #wjson = json.loads(ss)
     #jsonnn_tree = objectpath.Tree(wjson)
-    #print(ss)
-    #exit()
 
-
+    # getting data from web
     result = musicbrainzngs.search_releases(artist=artist, tracks=release,limit=1)
 
+    # get to json format
     sorted_string = json.dumps(result, indent=4, sort_keys=True)
-    #print(sorted_string)
 
+    #save  fro parsing
     wjson = json.loads(sorted_string)
     jsonnn_tree = objectpath.Tree(wjson['release-list'])
 
-    #print(result['release-list'])
-    #print(type(result['release-list']))
-    #print(len(result['release-list']))
+    #iterate for data in strings
     IDval = 0
     for (idx, release) in enumerate(result['release-list']):#goes once
         if 'date' in release:#check for existence
@@ -71,64 +86,5 @@ def getMetadata(artist, release):
                         finalList.update({keyID:ent[x]})
                 except Exception:
                     pass
-    for key, value in finalList.items():
-        #print(key, "---", value)
-        return finalList
 
-
-class Example(QWidget):
-
-    def __init__(self, flist):
-        super().__init__()
-        self.flist = flist
-        self.initUI()
-
-
-    def initUI(self):
-
-        self.setGeometry(300, 300, 400, 620)
-        self.setWindowTitle('Metadata box')
-        self.initTable()
-        self.show()
-
-    def initTable(self):
-        self.tableWidget = QTableWidget(self)
-        self.tableWidget.setRowCount(12)
-        self.tableWidget.setColumnCount(2)
-        self.tableWidget.move(0,0)
-
-        i = 0
-        for key, value in finalList.items():
-            self.tableWidget.setItem(i,0, QTableWidgetItem(key))
-            self.tableWidget.setItem(i,1, QTableWidgetItem(value))
-            i = i + 1
-
-
-
-
-#if __name__ == '__main__':
-#    musicbrainzngs.set_useragent(
-    "python-musicbrainzngs-example",
-    "0.1",
-    "https://github.com/alastair/python-musicbrainzngs/",
-#)
-#    artist = "Rihanna"
-#    song = "Umbrella"
-#    getMetadata(artist,song)
-
-
-    '''
-    picRes = musicbrainzngs.get_image_list(IDval)
-
-
-    picTree = json.dumps(picRes, indent=4, sort_keys=True)
-    print(picTree)
-    picObject = objectpath.Tree(picTree)
-    entPic = tree.execute("$.picture")
-    '''
-    #for x in (ent):
-        #finalList.update({x:ent[x]})
-    #app = QApplication(sys.argv)
-    #ex = Example(finalList)
-
-    #sys.exit(app.exec_())
+    return finalList
