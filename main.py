@@ -21,6 +21,7 @@ from itertools import cycle
 from collections import deque #iterate reversely
 from mutagen.id3 import *
 import mutagen
+from mutagen.easyid3 import EasyID3
 from mutagen.id3 import ID3, ID3NoHeaderError
 from mutagen.mp3 import MP3 #metadata manipulation
 import numpy as np
@@ -34,6 +35,8 @@ import threading
 import time
 import audio_metadata
 from tinytag import TinyTag
+import zipfile
+import wave
 
 #my own modules
 import data
@@ -686,12 +689,38 @@ class MusicPlayer(QWidget):
         self.refreshPlaylistWidget()
 
     def exportPlaylistAction(self):
-        try:
-            audioMeta =  mutagen.File(self.filesList + "/" + self.pickedSong)
-        except Exception:
-            return 0
+        if(not self.currentPlaylist):
+            print("not selected playlist")
+            return
 
-        print(audioMeta.pprint())
+        #setAlbum name for zip
+        albumName = self.currentPlaylist.getNameOfPlaylist()
+        zipName = (albumName + ".zip")
+        myzip = zipfile.ZipFile(zipName, 'w', zipfile.ZIP_DEFLATED)
+
+        # for every song add album metadata and do zipping
+        for name in (self.currentPlaylist.getAllSongs()):#iterate songs in playlist
+            if (name.lower().endswith(".mp3")):
+                try:
+                    tags =  EasyID3(self.filesList + "/" + name)
+                except Exception:
+                    tags =  EasyID3()
+
+                # add album info
+                originalAlbum = tags['album']
+                tags['album'] = albumName
+                tags.save()
+                #zip to file
+                myzip.write(name)
+                #get original album back
+                tags['album'] = originalAlbum
+                tags.save()
+
+            if (name.lower().endswith(".wav")):
+                myzip.write(name)
+        mess = ("Playlist exported to directory:\n\t" + self.filesList)
+        QMessageBox.about(self, "Export PL", mess)
+        return
 
     def fillBoxSongPic(self):
         """
