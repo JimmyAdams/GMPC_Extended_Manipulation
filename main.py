@@ -12,7 +12,8 @@ from PyQt5.QtGui import QCloseEvent
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
-from PyQt5.QtWidgets import QWidget, QMessageBox, QPushButton, QApplication, QGridLayout, QListWidget, QMessageBox
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QWidget, QMessageBox, QPushButton, QApplication, QGridLayout, QListWidget, QMessageBox, QToolBar, QDialogButtonBox
 from PyQt5.QtWidgets import QApplication,QVBoxLayout, QHBoxLayout, QGroupBox, QScrollArea, QVBoxLayout, QGroupBox, QLabel, QPushButton, QFormLayout
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtWidgets import QTableWidget,QTableWidgetItem
@@ -42,6 +43,21 @@ import wave
 import data
 import beatalg
 
+
+# object for song, more similar to C struct
+class Song():
+    def __init__(self, name, path):
+        self.name = name
+        self.path = path
+
+    def getName(self):
+        return self.name
+
+    def getPath(self):
+        return self.path
+
+    def setNewPath(self, path):
+        self.path = path
 
 # will be added to lists and playlists
 
@@ -122,7 +138,7 @@ class Playlist():
         """
         self.songs = [value for value in list1 if value in list2]
 
-    def setSymDiffList(self, list1, list2):
+    def setdiffList(self, list1, list2):
         """ Sets difference of items
 
             Parameters
@@ -135,7 +151,7 @@ class Playlist():
             -------
             list : result of difference
         """
-        self.songs = [value for value in list1 + list2 if value not in list1 or value not in list2]
+        self.songs = [value for value in list1 if value not in list2]
 
     def removeSongFromPlaylist(self, songName):
         """ Removes song from playlist
@@ -146,6 +162,38 @@ class Playlist():
                 Name of song to delete
         """
         self.songs.remove(songName)
+
+    def addSongT(self, songObject):
+        self.songs.append(songObject)
+
+    def sortSongs(self):
+        self.songs.sort()
+
+    def deleteSongT(self, songName):
+        for x in range(len(self.songs)):
+            if(self.songs[x].getName() == songName):
+                self.songs.pop(x)#delete playlist
+                break#break, deletes last item and dynamically lowers index so crash appears
+
+    def getSongObjectT(self, songName):
+        for x in range(len(self.songs)):
+            if(self.songs[x].getName() == songName):
+                return(self.songs[x])#delete playlist
+
+        #if not found
+        print("Not found song object")
+        return Song("","")
+
+
+    def isExisting(self, songObject):#find if is song in playlist
+        songName = songObject.getName()
+        exist = False
+        for x in range(len(self.songs)):
+            if(self.songs[x].getName() == songName):
+                exist = True
+                print(x)
+                break
+        return exist
 
     def clearAllPlaylist(self):
         """ Removes all songs from playlist
@@ -164,7 +212,8 @@ class Playlist():
 
     def printAllsongs(self):#debugging
         for i in range(len(self.songs)):
-            print(self.songs[i])
+            print(self.songs[i].getName())
+            print(self.songs[i].getPath())
 
     def getNameOfPlaylist(self):
         """ Getter for playlist name
@@ -201,58 +250,15 @@ class MusicPlayer(QWidget):
     def __init__(self):
         super().__init__()
         mixer.init()
-
-
-
-        self.initUI()
-
-    def initSongList(self):
-        """ Function for initialization of songsList
-            user has to pick directory from system
-            path to file is parsed (realpath)
-            MP3 and WAV formats get accepted
-
-        """
-        #self.filesList = str(QFileDialog.getExistingDirectory(self, "Select Directory"))
-        #print(self.filesList)
-        self.filesList = "/home/jakub/Music/The Cure - 1979 Boys Don't Cry"
-        os.chdir(self.filesList)
-        filesLists= os.listdir()
-        self.realpath = filesLists
-        for file in filesLists:
-            if (file.lower().endswith(".mp3")):#case insensitive
-                self.songsList.append(file)
-            elif(file.lower().endswith(".wav")):
-                self.songsList.append(file)
-
-    def listview_clicked(self):#set variable with picked song
-        """
-            Runs when action click pressed in playlist widget (listwidget)
-
-        """
-        item = self.listWidget.currentItem()
-        self.pickedSong = item.text()
-        self.status = "Stopped"
-        self.fillBoxSongInfo()
-        self.fillBoxSongPic()
-        #self.initTable()
-
-    def playlistview_clicked(self):
-        """
-            Iterate in playlist when action click pressed
-        """
-        itemPlaylist2 = self.playlistWidget.currentItem()
-        self.playlist2CurrentSong = itemPlaylist2.text()
-
-    def initUI(self):
-        """ Main part, contains PyQt5 implementation
-
-        """
+        mixer.pre_init(44100, -16, 2, 256)
 
         self.pickedSong = "" # currently playing song
-        self.playlist2CurrentSong = "" #picked song in second playlist
+        self.playlist2CurrentSong = "" #picked song in second playlist, used only for erase
         self.status = "Stopped" #activity in player ->played|paused|unpaused|stopped
         self.currentPlaylist = Playlist() # init current playlist
+        self.mainPlaylist = Playlist()
+
+
 
         #initialization of permanent object from file
         try:
@@ -263,73 +269,178 @@ class MusicPlayer(QWidget):
 
         except (IOError, EOFError):
             database = []
-            print("eeee")
-            pass
+            print("Error with permanent data")
 
+        #run saving at end
         atexit.register(self.loadPermanentData)
 
         try:
             self.file = open('playlists', 'wb')
         except:
             pass
+        self.initUI()
 
+    def initSongList(self):
+        """ Function for initialization of songsList
+            user has to pick directory from system
+            path to file is parsed (realpath)
+            MP3 and WAV formats get accepted
 
-        #database[0].printAllsongs()
+        """
+        #TODO: gets gtkdialog error
+        #self.filesList = str(QFileDialog.getExistingDirectory(self, "Select Directory"))
+        #gtk_window_set_transient_for(QFileDialog)
+        #print(self.filesList)
+        self.filesList = "/home/jakub/Music/No Doubt-Tragic Kingdom"
+        os.chdir(self.filesList)
+        filesLists= os.listdir()
+        self.realpath = filesLists
+
+        for file in filesLists:
+            if (file.lower().endswith(".mp3")):#case insensitive
+                tempSong = Song(file, str(self.filesList + "/" + file))
+                if(not self.mainPlaylist.isExisting(tempSong)):
+                    self.mainPlaylist.addSongT(tempSong)
+
+                #self.songsList.append(file)
+            elif(file.lower().endswith(".wav")):
+                tempSong = Song(file, str(self.filesList + "/" + file))
+                if(not self.mainPlaylist.isExisting(tempSong)):
+                    self.mainPlaylist.addSongT(tempSong)
+
+                #self.songsList.append(file)
+
+        #self.songsList.sort()
+        iterSongList = cycle(self.songsList)
+        #songs in main playlist
+        self.listWidget.clear()
+        #for song in self.songsList:#fill list with songs
+            #self.listWidget.addItem(song)
+        tempMain = self.mainPlaylist.getAllSongs()
+        for song in tempMain:
+            self.listWidget.addItem(song.getName())
+
+        #print("Main playlist")
+        #self.mainPlaylist.printAllsongs()
+
+    def listview_clicked(self):#set variable with picked song
+        """
+            Runs when action click pressed in playlist widget (listwidget)
+
+        """
+        item = self.listWidget.currentItem()
+        #self.pickedSong = item.text()
+        self.pickedSongObject = Song("","")
+        self.pickedSongObject = self.mainPlaylist.getSongObjectT(item.text())
+        print(type(self.pickedSongObject))
+        self.status = "Stopped"
+        self.mainPLstatus = 1
+        self.sidePLstatus = 0
+        self.fillBoxSongInfo()
+        self.fillBoxSongPic()
+        #self.initTable()
+
+    def playlistview_clicked(self):
+        """
+            Iterate in playlist when action click pressed
+        """
+        itemPlaylist2 = self.playlistWidget.currentItem()
+        self.playlist2CurrentSong = itemPlaylist2.text()
+        self.pickedSongObject = (self.currentPlaylist.getSongObjectT(itemPlaylist2.text()))#set value for song to show
+        self.playlist2pickedSongObject = self.currentPlaylist.getSongObjectT(self.playlist2CurrentSong)#using for erase
+        self.mainPLstatus = 0 #main PL clicked
+        self.sidePLstatus = 1
+        self.fillBoxSongInfo()
+        self.fillBoxSongPic()
+
+    def initUI(self):
+        """ Main part, contains PyQt5 implementation
+
+        """
+
+        self.noImage =  QPixmap("icons/noImage.png")
+
+        toolBar = QToolBar(self)
+
+        toolButton = QToolButton()
+        toolButton.setText("Edit metadata")
+        #toolButton.setCheckable(True)
+        toolButton.setAutoExclusive(True)
+        toolButton.clicked.connect(self.showdialog)
+        toolBar.addWidget(toolButton)
+
+        # button for create playlist
+        btnCreatePlaylist = QToolButton(self)
+        btnCreatePlaylist.setText('Create Playlist')
+        btnCreatePlaylist.setAutoExclusive(True)
+        btnCreatePlaylist.clicked.connect(self.createPlaylistAction)
+        toolBar.addWidget(btnCreatePlaylist)
+
+        # button for delete playlist
+        btnDeletePlaylist = QToolButton(self)
+        btnDeletePlaylist.setText('Delete Playlist')
+        #btnDeletePlaylist.move(620, 30)
+        btnDeletePlaylist.setAutoExclusive(True)
+        btnDeletePlaylist.clicked.connect(self.deletePlaylistAction)
+        toolBar.addWidget(btnDeletePlaylist)
 
         #button to play music
         btnPlay = QPushButton(self)
         btnPlay.setIcon(QIcon(QPixmap("icons/iconPlay.svg")))
-        btnPlay.move(20, 20)
+        btnPlay.move(20, 30)
+        #btnPlay.setIconSize(QSize(20,20))
+        btnPlay.resize(30,30)
         btnPlay.clicked.connect(self.play)
 
         #button to pause music
         btnPause = QPushButton(self)
         btnPause.setIcon(QIcon(QPixmap("icons/iconPause.svg")))
-        btnPause.move(60, 20)
+        btnPause.move(60, 30)
         btnPause.clicked.connect(self.pause)
+        btnPause.resize(30,30)
 
         #button to stop music
         btnStop = QPushButton(self)
         btnStop.setIcon(QIcon(QPixmap("icons/iconStop.svg")))
-        btnStop.move(100, 20)
+        btnStop.move(100, 30)
         btnStop.clicked.connect(self.stop)
+        btnStop.resize(30,30)
 
         #button for previous song
         btnPrev = QPushButton(self)
         btnPrev.setIcon(QIcon(QPixmap("icons/iconPrev.svg")))
-        btnPrev.move(140, 20)
+        btnPrev.move(140, 30)
         btnPrev.clicked.connect(self.previous)
+        btnPrev.resize(30,30)
 
         #button for next Song
         btnNext = QPushButton(self)
         btnNext.setIcon(QIcon(QPixmap("icons/iconNext.svg")))
-        btnNext.move(180, 20)
+        btnNext.move(180, 30)
         btnNext.clicked.connect(self.next)
+        btnNext.resize(30,30)
+
+        btnFolder = QPushButton(self)
+        btnFolder.setIcon(QIcon(QPixmap("icons/iconFolder.png")))
+        btnFolder.move(220, 30)
+        btnFolder.clicked.connect(self.initSongList)
+        btnFolder.resize(30,30)
 
         # button for Select playlist to show in playlist box
         btnSelectPlaylist = QPushButton('Select Playlist',self)
-        btnSelectPlaylist.move(280, 20)
+        btnSelectPlaylist.move(280, 30)
         btnSelectPlaylist.clicked.connect(self.selectPlaylistAction)
 
         # button for Adding song to playlist
         btnToPlaylist = QPushButton('Add to Playlist',self)
-        btnToPlaylist.move(390, 20)
+        btnToPlaylist.move(390, 30)
         btnToPlaylist.clicked.connect(self.addSongToPlaylistAction)
 
         # button for erase song from playlist
         btnEraseFromPlaylist = QPushButton('Erase from Playlist',self)
-        btnEraseFromPlaylist.move(620, 50)
+        btnEraseFromPlaylist.move(505, 30)
         btnEraseFromPlaylist.clicked.connect(self.eraseSongFromPlaylistAction)
 
-        # button for create playlist
-        btnCreatePlaylist = QPushButton('Create Playlist',self)
-        btnCreatePlaylist.move(505, 20)
-        btnCreatePlaylist.clicked.connect(self.createPlaylistAction)
-
-        # button for delete playlist
-        btnDeletePlaylist = QPushButton('Delete Playlist',self)
-        btnDeletePlaylist.move(620, 20)
-        btnDeletePlaylist.clicked.connect(self.deletePlaylistAction)
 
         # button for merge playlist together
         btnMergePlaylist = QPushButton('Merge playlists',self)
@@ -342,9 +453,9 @@ class MusicPlayer(QWidget):
         btnInterPlaylist.clicked.connect(self.interPlaylistsAction)
 
         # button for  differece of two playlists
-        btnSymDiffPlaylist = QPushButton('Diff playlists',self)
-        btnSymDiffPlaylist.move(620,140)
-        btnSymDiffPlaylist.clicked.connect(self.symetricDiffPlaylistsAction)
+        btnDiffPlaylist = QPushButton('Diff playlists',self)
+        btnDiffPlaylist.move(620,140)
+        btnDiffPlaylist.clicked.connect(self.diffPlaylistsAction)
 
         # button for export playlist
         btnExportPlaylist = QPushButton('Export PL->ALBUM',self)
@@ -356,11 +467,13 @@ class MusicPlayer(QWidget):
         btnBPM.move(620,210)
         btnBPM.clicked.connect(self.getBpmOfSong)
 
+
+
         #label to show bpm next to bpm button
         self.labelBPM = QLabel(self)
         self.labelBPM.move(620,240)
         self.labelBPM.resize(100,20)
-        self.labelBPM.setStyleSheet("background-color: red; border: 1px inset grey;")
+        self.labelBPM.setStyleSheet("background-color: yellow; border: 1px inset grey;")
         self.labelBPM.setText("BPM: ")
 
         #show playlist name
@@ -371,35 +484,35 @@ class MusicPlayer(QWidget):
         self.labelPlaylist.setText("")
 
         # call initialization at start of media player to init directory and playlists
-        self.initSongList()
-        self.songsList.sort()
-        iterSongList = cycle(self.songsList)
+
         layout = QGridLayout()
-
-
-        #songs in main playlist
+        self.mainPLstatus = 1
+        self.sidePLstatus = 0
         self.listWidget = QListWidget(self)
-        for song in self.songsList:#fill list with songs
-            self.listWidget.addItem(song)
-        #Resize width and height
-        self.listWidget.resize(270,370)
-        self.listWidget.move(20, 250)
+        self.listWidget.setStyleSheet("QListWidget" ## default style
+                                     "{"
+                                     "border : 3px solid grey;"
+                                     "}")
+        self.initSongList()
 
+        #Resize width and height
+        self.listWidget.resize(240,370)
+        self.listWidget.move(20, 250)
         # main playlist
         self.listWidget.setWindowTitle('PyQT QListwidget Demo')
         self.listWidget.clicked.connect(self.listview_clicked)
+
 
         #playlist for operations
         self.playlistWidget = QListWidget(self)
         self.playlistWidget.resize(240,370)
         self.playlistWidget.move(300, 250)
-
         self.playlistWidget.clicked.connect(self.playlistview_clicked)
         #self.playlistWidget
 
         #Song Info Box
-        self.groupbox = QGroupBox("Song Info",self)
-        self.groupbox.move(50, 46)
+        self.groupbox = QGroupBox("Song Info",self)#QGroupBox("Song Info",self)
+        self.groupbox.move(50, 60)
         self.groupbox.resize(500, 170)
         self.hbox = QHBoxLayout()
         self.v2box = QVBoxLayout()
@@ -430,31 +543,150 @@ class MusicPlayer(QWidget):
 
 
         #self.setGeometry(100, 100, 750, 400)
-        self.setFixedSize(800, 640)
+        self.setFixedSize(800, 660)
         self.setWindowTitle('Gnome Music Player Clone')
 
         self.show()
+
 
     def getBpmOfSong(self):
         """ Calls bpm of WAV file from module beatalg
             sets value in label in red
         """
-        if(self.pickedSong.lower().endswith(".wav")):
-            song = self.filesList + "/" + self.pickedSong
+        name = self.pickedSongObject.getName()
+        if(name.lower().endswith(".wav")):
+            #song = self.filesList + "/" + self.pickedSong
+            song = self.pickedSongObject.getPath()
             bpm = beatalg.getBPM(song)
 
 
             self.labelBPM.setText("BPM: " + str(bpm))
 
+    def showdialog(self):
+
+        self.dialog = QDialog()
+        form = QFormLayout(self.dialog)
+        song = self.pickedSongObject.getPath()
+        try:
+            #tags =  EasyID3(self.filesList + "/" + self.pickedSong)
+            tags = EasyID3(song)
+        except Exception:
+            return #no id3format
+        print(tags.pprint())
+        #add album
+        try:
+            titleE = tags['title'][0]
+        except:
+            titleE = ""
+        self.e1 = QLineEdit()
+        self.e1.setText(titleE)
+        form.addRow("Title", self.e1)
+
+        try:
+            artistE = tags['artist'][0]
+        except:
+            artistE = ""
+        self.e2 = QLineEdit()
+        self.e2.setText(artistE)
+        form.addRow("Artist", self.e2)
+
+        try:
+            albumE = tags['album'][0]
+        except:
+            albumE = ""
+        self.e3 = QLineEdit()
+        self.e3.setText(albumE)
+        form.addRow("Album", self.e3)
+
+        try:
+            genreE = tags['genre'][0]
+        except:
+            genreE = ""
+        self.e4 = QLineEdit()
+        self.e4.setText(genreE)
+        form.addRow("Genre", self.e4)
+
+        try:
+            trackNumberE = tags['tracknumber'][0]
+        except:
+            trackNumberE = ""
+        self.e5 = QLineEdit()
+        self.e5.setText(trackNumberE)
+        form.addRow("Tracknumber", self.e5)
+
+        try:
+            dateE = tags['date'][0]
+        except:
+            dateE = ""
+        self.e6 = QLineEdit()
+        self.e6.setText(dateE)
+        form.addRow("Date", self.e6)
+
+        try:
+            moodE = tags['mood'][0]
+        except:
+            moodE = ""
+        self.e7 = QLineEdit()
+        self.e7.setText(moodE)
+        form.addRow("Mood", self.e7)
+
+
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, Qt.Horizontal, self)
+        form.addRow(self.buttons)
+        self.buttons.accepted.connect(self.saveButton)
+        self.dialog.setWindowTitle("Dialog")
+        self.dialog.setWindowModality(Qt.ApplicationModal)
+        self.dialog.exec_()
+
+    def saveButton(self):
+        print("saving metadata")
+        song = self.pickedSongObject.getPath()
+        try:
+            #tags =  EasyID3(self.filesList + "/" + self.pickedSong)
+            tags = EasyID3(song)
+        except Exception:
+            return #no id3format
+
+        if(self.e1.text()):#title
+            tags['title'] = self.e1.text()
+        if(self.e2.text()):#title
+            tags['artist'] = self.e2.text()
+        if(self.e3.text()):#title
+            tags['album'] = self.e3.text()
+        if(self.e4.text()):#title
+            tags['genre'] = self.e4.text()
+        if(self.e5.text()):#title
+            tags['tracknumber'] = self.e5.text()
+        if(self.e6.text()):#title
+            tags['date'] = self.e6.text()
+        if(self.e7.text()):#title
+            tags['mood'] = self.e7.text()
+
+
+        tags.save()
+        self.dialog.close()
+        return
+
     def addSongToPlaylistAction(self):
         """ Add picked song to playlist
 
         """
+        if(self.mainPLstatus == 0):
+            QMessageBox.about(self, "Warning", "Cannot add to side playlist from main")
+            return
+
+        if(self.pickedSongObject.getName()):
+            for x in range(len(self.allPlaylists)):
+                if(self.allPlaylists[x].getNameOfPlaylist() == self.currentPlaylist.getNameOfPlaylist()):#current playlist
+                    self.allPlaylists[x].addSongToPlaylist(self.pickedSongObject)
+                    self.refreshPlaylistWidget()
+        '''
         if(self.pickedSong):
             for x in range(len(self.allPlaylists)):
                 if(self.allPlaylists[x].getNameOfPlaylist() == self.currentPlaylist.getNameOfPlaylist()):#current playlist
-                    self.allPlaylists[x].addSongToPlaylist(self.pickedSong)
+                    self.allPlaylists[x].addSongToPlaylist(self.pickedSongObject)
                     self.refreshPlaylistWidget()
+        '''
 
     def eraseSongFromPlaylistAction(self):
         """ Erase Picked song from playlist
@@ -581,7 +813,7 @@ class MusicPlayer(QWidget):
 
         self.refreshPlaylistWidget() #refresh values
 
-    def symetricDiffPlaylistsAction(self):
+    def diffPlaylistsAction(self):
         """
             Difference of playlists
         """
@@ -609,10 +841,10 @@ class MusicPlayer(QWidget):
         playlist2 = Playlist()
         playlist2 = self.playlistFromName(secondPlaylist)
 
-        symDiff = Playlist()
-        symDiff.setNameToPlaylist(newName)
-        symDiff.setSymDiffList(playlist1.getAllSongs(), playlist2.getAllSongs())
-        self.allPlaylists.append(symDiff)
+        diff = Playlist()
+        diff.setNameToPlaylist(newName)
+        dDiff.setdiffList(playlist1.getAllSongs(), playlist2.getAllSongs())
+        self.allPlaylists.append(diff)
 
         self.refreshPlaylistWidget() #refresh values
 
@@ -727,21 +959,31 @@ class MusicPlayer(QWidget):
             Creates pixmap in song box info
             image gets from metadata of song
         """
-        name = self.pickedSong
+        name = self.pickedSongObject.getName()
         pixmap = QPixmap()
-
+        song = self.pickedSongObject.getPath()
         if (name.lower().endswith(".mp3")):
             try:
-                audioMeta =  mutagen.File(self.filesList + "/" + self.pickedSong)
+                audioMeta =  mutagen.File(song)
             except Exception:
                 return 0
 
+            isPic = False
             for tag in audioMeta.tags.values():
                 if tag.FrameID == 'APIC':
                     pixmap.loadFromData(tag.data)
+                    pixmap = pixmap.scaled(125, 125, Qt.KeepAspectRatio)
+                    isPic = True
                     break
-            pixmap = pixmap.scaled(110, 110, Qt.KeepAspectRatio)
-            self.imageAlbumLabel.setPixmap(pixmap)
+            if(isPic):
+                try:
+                    self.imageAlbumLabel.setPixmap(pixmap)
+                except:
+
+                    pass#TODO: empty image
+            else:
+                self.noImage = self.noImage.scaled(125, 125, Qt.KeepAspectRatio)
+                self.imageAlbumLabel.setPixmap(self.noImage)
 
 
 
@@ -751,10 +993,10 @@ class MusicPlayer(QWidget):
             Two formats Wav and MP3
 
         """
-        name = self.pickedSong
+        name = self.pickedSongObject.getName()
         #add path
         #song = ("/home/jakub/Music/The Cure - 1979 Boys Don't Cry/"+self.pickedSong)
-        song = (self.filesList + "/" + self.pickedSong)
+        song = self.pickedSongObject.getPath()
 
         if (name.lower().endswith(".mp3")):
             try:
@@ -821,7 +1063,7 @@ class MusicPlayer(QWidget):
                 self.infoLabels[3].setText("Format: ")
 
             #todo: everything to block try except
-
+            self.initDatabaseTable(metadata.tags['artist'][0], metadata.tags['artist'][0],)
 
         return
 
@@ -834,7 +1076,7 @@ class MusicPlayer(QWidget):
         # update songs in list widget
         self.playlistWidget.clear()
         for song in self.currentPlaylist.getAllSongs():#fill list with songs
-            self.playlistWidget.addItem(song)
+            self.playlistWidget.addItem(song.getName())
 
 
     def selectPlaylistAction(self):
@@ -856,7 +1098,7 @@ class MusicPlayer(QWidget):
             if self.allPlaylists[idx].getNameOfPlaylist() == nameOfPickedPlaylist:
                 #print(self.allPlaylists[idx].getNameOfPlaylist())
                 self.currentPlaylist = copy.copy(self.allPlaylists[idx])
-                self.currentPlaylist.printAllsongs()
+                #self.currentPlaylist.printAllsongs()
 
                 self.refreshPlaylistWidget()
 
@@ -872,7 +1114,8 @@ class MusicPlayer(QWidget):
             return
         else: # play song from beginning
             self.status = "Played"
-            mixer.music.load(self.filesList + "/" + self.pickedSong)
+            #mixer.music.load(self.filesList + "/" + self.pickedSong)
+            mixer.music.load(self.pickedSongObject.getPath())
             mixer.music.play()
             return
 
@@ -900,14 +1143,31 @@ class MusicPlayer(QWidget):
         """
             Play next song, with rotation of list
         """
-        mixer.music.stop()
 
-        index = self.songsList.index(self.pickedSong)#index of actual song
-        #print("Index is "+ str(index))
-        deq = deque(self.songsList)
+
+        if(self.mainPLstatus == 1):
+            arraySongs = self.mainPlaylist.getAllSongs()
+        if(self.sidePLstatus == 1):
+            arraySongs = self.playlist2CurrentSong.getAllSongs()
+        a = []
+        for x in arraySongs:
+            a.append(x.getName())
+
+        print(*a, sep = "\n")
+        try:
+            index = a.index(self.pickedSongObject.getName())#index of actual song
+        except:
+            return
+
+
+        mixer.music.stop()
+        deq = deque(a)
         deq.rotate(-1)#shift to left
-        self.pickedSong = deq[index]
-        #print("Wanna "+ deq[index])
+        name = deq[index]
+        print(name)
+        self.pickedSongObject = self.mainPlaylist.getSongObjectT(name)
+        self.fillBoxSongInfo()
+        self.fillBoxSongPic()
         self.status = "Played"
         self.play()
         return
@@ -917,7 +1177,11 @@ class MusicPlayer(QWidget):
             Play rpevious song, with rotation of list
         """
         mixer.music.stop()
-        index = self.songsList.index(self.pickedSong)#index of actual song
+        try:
+            index = self.songsList.index(self.pickedSong)#index of actual song
+        except Exception:
+            print("Not in list")
+            return
         deq = deque(self.songsList)
         deq.rotate(1)#shift to left
         self.pickedSong = deq[index]
@@ -944,30 +1208,6 @@ class MusicPlayer(QWidget):
         word = str(min) + "min:" + str(sec) + "sec"
         return word
 
-        '''
-    def closeEvent(self, event):
-
-        quit_msg = "Are you sure you want to exit the program?"
-        reply = QMessageBox.question(self, 'Message',
-                         quit_msg, QMessageBox.Yes, QMessageBox.No)
-
-        if reply == QMessageBox.Yes:
-            self.saveToFile()
-
-            event.accept()
-        else:
-            event.ignore()
-        '''
-    def saveToFile(self):
-        try:
-            print("save data")
-            with open('playlists', 'wb') as f:#overwrite file
-                pickle.dump(self.allPlaylists, f, pickle.HIGHEST_PROTOCOL)
-                print("opening")
-
-        except:
-            print("eeeeerrpr")
-            pass
     def loadPermanentData(self): # opens file in main Init beacuse atexit part cant write to file
         pickle.dump(self.allPlaylists, self.file, pickle.HIGHEST_PROTOCOL)
         self.file.close()
